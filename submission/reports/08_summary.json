@@ -1,0 +1,18 @@
+{
+  "verdict": {
+    "decision": "Hold",
+    "n_errors": 0,
+    "n_warn_images": 44,
+    "n_images": 203,
+    "warn_ratio": 0.2167,
+    "reasons": [
+      "Tỉ lệ ảnh có cảnh báo chưa duyệt 21.67% (44/203) >= ngưỡng cho phép 10.00%. Chỉ xuất bản nháp, chưa được phát hành."
+    ]
+  },
+  "reviewed": 80,
+  "budget": 80,
+  "seconds": 7.5,
+  "exported": "C:\\Users\\hiwn1\\OneDrive\\Tài liệu\\Vin AI\\K5-L2-CaoThiThuyHien--2A202603193-Day09-AutoQC-Pipeline-Lab\\submission\\export\\clean_v1",
+  "config_sha1": "35ffc8ad73adf12f0a6b27bb30833826e78d3923",
+  "review_sim_sha1": "7988ca22827f780a7043a2300490e679a1697154"
+}
