@@ -70,3 +70,18 @@ Chưa chạy do môi trường cục bộ là máy tính cá nhân không trang 
 - **Prompt chính:** *"Hãy triển khai 4 module (label_format, gate, autofix, second_opinion) theo đúng hợp đồng giao diện, xử lý đầy đủ các ca biên hình học và bắt ngoại lệ theo phương pháp TDD."*
 - **Cách kiểm tra code AI:** Chạy toàn bộ 79 bài test trong `tests/` đảm bảo xanh 100%; kiểm tra kỹ file `03_fixes.csv` để đảm bảo máy không sửa đè hoặc xoá nhầm dữ liệu gốc trong `data/raw`; chạy kịch bản thử nghiệm `--budget 0` để kiểm tra độ tin cậy của cửa chặn.
 - **1 lần AI viết sai và cách khắc phục:** Khi viết hàm cắt box tràn (`clip_box`) trong `autofix.py`, ban đầu AI không xử lý trường hợp box nằm lệch hẳn ra ngoài ảnh, dẫn đến toạ độ sau khi clip có chiều rộng hoặc chiều cao ≤ 0. Bài test `test_box_fully_outside_is_dropped_not_negative` đã phát hiện lỗi này, sau đó code đã được cập nhật để tự động chuyển sang hành động xoá dòng (`drop_line`) khi diện tích box sau khi cắt ≤ 0.
+
+## 7. Phần làm thêm nhận điểm thưởng (+5 điểm)
+**(a) Thưởng +3 điểm: Viết thêm check kiểm tra tỉ lệ khung hình bất thường (Extreme Aspect Ratio):**
+- Đã cài đặt module mới `pipeline/checks/aspect_ratio.py` và bộ unit test `tests/test_aspect_ratio.py` (4/4 test passed).
+- Quy tắc: Cảnh báo `BOX_ASPECT_RATIO` khi tỉ lệ chiều rộng / chiều cao ($w_{px} / h_{px}$) của box vượt ngưỡng cực đoan:
+  + $w_{px} / h_{px} > 12.0$: Box quá dẹt ngang (dễ do người gán vô tình nhấp chuột kéo thành vệt ngang mỏng dính nền đường).
+  + $w_{px} / h_{px} < 0.10$: Box quá mảnh dọc (dễ do gán nhầm cột đèn, biển báo hoặc kéo trượt chuột theo chiều dọc).
+- Check xử lý an toàn với ngoại lệ cú pháp dòng, tính toán theo pixel thực tế của ảnh và sinh cờ cảnh báo mức `WARN` để đưa vào hàng đợi duyệt.
+
+**(b) Thưởng +2 điểm: Đối chiếu bộ lọc CVAT (docs/CVAT_FILTER.md):**
+- Khảo sát bộ lọc `width < 20` trên các ảnh trong lô:
+  + Ví dụ ảnh `img_0026`: Có 5 box có `width < 20px` (dòng 1, 2, 3, 4, 6). Trong đó dòng 6 có cạnh ngắn $11.4\text{px} < 12\text{px}$ nên pipeline đã cảnh báo `BOX_TINY` (khớp chính xác giữa pipeline và CVAT).
+  + Các dòng 1, 2, 3, 4 có chiều rộng từ $12\text{px}$ đến $19.8\text{px}$: Khớp bộ lọc `width < 20` trên CVAT nhưng không bị pipeline bắt vì pipeline dùng ngưỡng quy tắc dự án `min_box_px = 12px` (ngưỡng 12px chặt chẽ hơn, tránh bắt nhầm các đối tượng người ở xa còn nhận diện được).
+- **Ý nghĩa thuộc tính `can_review`:** Trong CVAT, người gán nhãn đánh dấu `attr["can_review"] == true` khi gặp các ca khó, vật thể mờ ảo hoặc bị che khuất để báo hiệu cho Reviewer cấp cao vào kiểm tra lại. Trong pipeline tự động, cơ chế tương đương chính là **Hàng đợi ưu tiên `05_review_queue.csv`** kết hợp với **`second_opinion`**, tự động chấm điểm trọng số nguy cơ (`NEEDS_LABEL` = 10, `WRONG_CLASS` = 3 * conf, `MISSING` = 2 * conf) để đẩy các ca nghi ngờ nhất lên đầu cho người duyệt mà không cần người gán nhãn phải nhớ tích chọn thủ công.
+
