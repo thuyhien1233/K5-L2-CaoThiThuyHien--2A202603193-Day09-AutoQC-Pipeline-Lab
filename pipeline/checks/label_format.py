@@ -25,5 +25,96 @@ from ..common import ERROR, WARN, Issue, iou_xywh, parse_yolo_line  # noqa: F401
 
 
 def run(ds, cfg):
-    # TODO: duyệt từng file nhãn, từng dòng
-    raise NotImplementedError("check label_format chưa làm")
+    issues = []
+    fmt_cfg = cfg.get("label_format", {})
+    overflow_tol = fmt_cfg.get("overflow_tol", 0.002)
+    min_box_px = fmt_cfg.get("min_box_px", 12)
+    max_box_frac = fmt_cfg.get("max_box_frac", 0.95)
+    dup_box_iou = fmt_cfg.get("dup_box_iou", 0.9)
+    num_classes = len(ds.classes)
+
+    for lp in ds.label_files():
+        stem = lp.stem
+        lines = ds.read_label_lines(stem)
+        if lines is None:
+            continue
+
+        size = ds.image_size(stem)
+        valid_boxes = []
+
+        for line_no, raw_line in lines:
+            # 1. Parse YOLO line
+            try:
+                cls_id, cx, cy, w, h = parse_yolo_line(raw_line)
+            except ValueError:
+                issues.append(
+                    Issue("label_format", ERROR, "BAD_FORMAT", stem,
+                          f"dòng nhãn sai định dạng: {raw_line}", line=line_no)
+                )
+                continue
+
+            # 2. Check class ID
+            if not (0 <= cls_id < num_classes):
+                issues.append(
+                    Issue("label_format", ERROR, "BAD_CLASS_ID", stem,
+                          f"id lớp {cls_id} ngoài dải hợp lệ 0..{num_classes - 1}", line=line_no)
+                )
+                continue
+
+            # 3. Check box size > 0
+            if w <= 0 or h <= 0:
+                issues.append(
+                    Issue("label_format", ERROR, "BOX_ZERO", stem,
+                          f"kích thước box <= 0 (w={w}, h={h})", line=line_no)
+                )
+                continue
+
+            box = (cx, cy, w, h)
+
+            # 4. Check overflow
+            x1 = cx - w / 2.0
+            x2 = cx + w / 2.0
+            y1 = cy - h / 2.0
+            y2 = cy + h / 2.0
+            overflow = max(0.0, -x1, -y1, x2 - 1.0, y2 - 1.0)
+            if overflow > overflow_tol:
+                issues.append(
+                    Issue("label_format", ERROR, "BOX_OUT_OF_IMAGE", stem,
+                          f"box tràn ra ngoài ảnh (mức tràn {overflow:.4f})",
+                          line=line_no, extra={"overflow": overflow})
+                )
+
+            # 5. Check duplicate box with previous box of SAME class
+            for prev_cls, prev_box in valid_boxes:
+                if prev_cls == cls_id and iou_xywh(box, prev_box) > dup_box_iou:
+                    issues.append(
+                        Issue("label_format", ERROR, "DUP_BOX", stem,
+                              f"trùng box với dòng trước đó (IoU > {dup_box_iou})",
+                              line=line_no)
+                    )
+                    break
+
+            valid_boxes.append((cls_id, box))
+
+            # 6. Check tiny box (warning)
+            if size is not None:
+                img_w, img_h = size
+                box_w_px = w * img_w
+                box_h_px = h * img_h
+                short_side_px = min(box_w_px, box_h_px)
+                if short_side_px < min_box_px:
+                    issues.append(
+                        Issue("label_format", WARN, "BOX_TINY", stem,
+                              f"box quá nhỏ (cạnh ngắn {short_side_px:.1f}px < {min_box_px}px)",
+                              line=line_no)
+                    )
+
+            # 7. Check huge box (warning)
+            if w * h > max_box_frac:
+                issues.append(
+                    Issue("label_format", WARN, "BOX_HUGE", stem,
+                          f"box quá lớn (diện tích {w * h:.4f} > {max_box_frac})",
+                          line=line_no)
+                )
+
+    return issues
